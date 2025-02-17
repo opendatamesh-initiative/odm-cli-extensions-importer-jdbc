@@ -47,6 +47,7 @@ public class DataStoreApiSchemaColumn {
     private Integer partitionKeyPosition;
     private Boolean clusterStatus;
     private Integer clusterKeyPosition;
+    private String ordinalPosition;
 
     public DataStoreApiSchemaColumn() {
 
@@ -424,5 +425,13 @@ public class DataStoreApiSchemaColumn {
 
     public void setType(String type) {
         this.type = type;
+    }
+
+    public void setOrdinalPosition(String ordinalPosition) {
+        this.ordinalPosition = ordinalPosition;
+    }
+
+    public String getOrdinalPosition() {
+        return ordinalPosition;
     }
 }

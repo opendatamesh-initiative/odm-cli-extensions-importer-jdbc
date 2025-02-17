@@ -13,7 +13,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ImporterJDBCExtensionTest {
@@ -54,20 +53,23 @@ class ImporterJDBCExtensionTest {
         config.setRemoteSystemsConfigurations(List.of(systemConfig));
 
         importSchemaArguments = new ImportSchemaArguments();
+        importSchemaArguments.setParentCommandOptions(Map.of(
+                "target", "output-port",
+                "from", "jdbc",
+                "to", "port"
+        ));
+
         importSchemaArguments.setOdmCliConfig(config);
         Map<String, String> params = new HashMap<>();
         params.put("--connectionName", "testConnection");
         params.put("--schemaName", "TEST_SCHEMA");
         params.put("--catalogName", null);
-        params.put("--tablesRegex", "%");
+        params.put("--tablesPattern", "%");
         params.put("--portName", "test-port");
-        params.put("--portVersion","1.0.1");
-        params.put("--platform","h2:testplatform");
+        params.put("--portVersion", "1.0.1");
+        params.put("--platform", "h2:testplatform");
 
-        importerJDBC.getExtensionOptions().forEach(option -> {
-            option.getSetter().accept(params.get(option.getNames().get(0)));
-
-        });
+        importerJDBC.getExtensionOptions().forEach(option -> option.getSetter().accept(params.get(option.getNames().get(0))));
     }
 
     @Test
@@ -78,7 +80,7 @@ class ImporterJDBCExtensionTest {
         assertNotNull(port.getPromises());
         assertNotNull(port.getPromises().getApi());
         assertNotNull(port.getPromises().getApi().getDefinitionJson());
-        assertEquals("ports/test-port.json", port.getRef());
+        assertEquals("ports/output-port/test-port.json", port.getRef());
 
         String jsonDefinition = port.getPromises().getApi().getDefinitionJson().toString();
         assertTrue(jsonDefinition.contains("test_table".toUpperCase()), "Extracted metadata should contain 'test_table'");

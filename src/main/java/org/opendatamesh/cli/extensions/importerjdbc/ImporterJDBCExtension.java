@@ -11,12 +11,17 @@ import org.opendatamesh.cli.extensions.importschema.ImportSchemaExtension;
 import org.opendatamesh.dpds.model.core.StandardDefinitionDPDS;
 import org.opendatamesh.dpds.model.interfaces.PortDPDS;
 import org.opendatamesh.dpds.model.interfaces.PromisesDPDS;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.sql.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
 public class ImporterJDBCExtension implements ImportSchemaExtension {
+
+    private static final String PARAM_TABLE_TYPES = "--tableTypes";
+    private final Logger logger = LoggerFactory.getLogger(getClass());
 
     private static final String SUPPORTED_FROM = "jdbc";
     private static final String SUPPORTED_TO = "port";
@@ -27,7 +32,7 @@ public class ImporterJDBCExtension implements ImportSchemaExtension {
     private static final String PARAM_PLATFORM = "--platform";
     private static final String PARAM_CATALOG_NAME = "--catalogName";
     private static final String PARAM_SCHEMA_NAME = "--schemaName";
-    private static final String PARAM_TABLES_REGEX = "--tablesRegex";
+    private static final String PARAM_TABLES_REGEX = "--tablesPattern";
 
     private final Map<String, String> parameters = new HashMap<>();
 
@@ -63,30 +68,51 @@ public class ImporterJDBCExtension implements ImportSchemaExtension {
         dataStoreApiDefinition.setSchema(dataStoreApiSchemaResource);
 
         // Retrieve metadata from JDBC
+        logger.info("Opening connection to {}", jdbcUrl);
         try (Connection conn = DriverManager.getConnection(jdbcUrl, jdbcUser, jdbcPassword)) {
             DatabaseMetaData metaData = conn.getMetaData();
             String catalogName = parameters.get(PARAM_CATALOG_NAME);
             String schemaName = parameters.get(PARAM_SCHEMA_NAME);
             String tablePattern = parameters.get(PARAM_TABLES_REGEX);
+            String[] tableTypes = parameters.get(PARAM_TABLE_TYPES) != null ? parameters.get(PARAM_TABLE_TYPES).split(",") : null;
 
-            try (ResultSet tables = metaData.getTables(catalogName, schemaName, tablePattern, null)) {
+            logger.info("Loading metadata: catalog={}, schema={}, tables={}", catalogName, schemaName, tablePattern);
+            try (ResultSet tables = metaData.getTables(catalogName, schemaName, tablePattern, tableTypes)) {
                 while (tables.next()) {
                     String tableName = tables.getString("TABLE_NAME");
+                    String tableSchema = tables.getString("TABLE_SCHEM");
+                    String tableCatalog = tables.getString("TABLE_CAT");
 
                     DataStoreApiSchemaEntity entity = new DataStoreApiSchemaEntity();
-                    dataStoreApiSchemaResource.getTables().add(entity);
-                    DataStoreAPISchemaEntityDefinition entityDefinition = new DataStoreAPISchemaEntityDefinition();
-                    entity.setDefinition(entityDefinition);
-                    entityDefinition.setName(tables.getString("TABLE_NAME"));
-                    entityDefinition.setProperties(new HashMap<>());
+                    entity.setSpecification("json-schema");
+                    entity.setSpecificationVersion("1");
+                    DataStoreAPISchemaEntityDefinition entityJsonSchema = new DataStoreAPISchemaEntityDefinition();
+                    entity.setDefinition(entityJsonSchema);
 
-                    try (ResultSet columns = metaData.getColumns(catalogName, schemaName, tableName, null)) {
+                    entityJsonSchema.setTitle(tableName);
+                    entityJsonSchema.setDescription(tables.getString("REMARKS"));
+                    entityJsonSchema.setName(tableName);
+                    entityJsonSchema.setProperties(new HashMap<>());
+
+                    dataStoreApiSchemaResource.getTables().add(entity);
+
+                    logger.info("Table: {} - {}.{}", tableCatalog, tableSchema, tableName);
+
+                    try (ResultSet columns = metaData.getColumns(tableCatalog, tableSchema, tableName, null)) {
                         while (columns.next()) {
                             DataStoreApiSchemaColumn columnMetadata = new DataStoreApiSchemaColumn();
                             columnMetadata.setName(columns.getString("COLUMN_NAME"));
                             columnMetadata.setType(SQLToJsonSchemaMapper.mapSqlTypeToJsonSchema(columns.getInt("DATA_TYPE")));
                             columnMetadata.setPhysicalType(columns.getString("TYPE_NAME"));
-                            entityDefinition.getProperties().put(columnMetadata.getName(), columnMetadata);
+                            columnMetadata.setDescription(columns.getString("REMARKS"));
+                            String isNullableISOString = columns.getString("IS_NULLABLE");
+                            Boolean isNullable = "YES".equalsIgnoreCase(isNullableISOString) ? Boolean.TRUE
+                                    : "NO".equalsIgnoreCase(isNullableISOString) ? Boolean.FALSE
+                                    : null;
+                            columnMetadata.setNullable(isNullable);
+                            columnMetadata.setOrdinalPosition(columns.getString("ORDINAL_POSITION"));
+                            entityJsonSchema.getProperties().put(columnMetadata.getName(), columnMetadata);
+                            logger.info("--> Column: {}", columnMetadata.getName());
                         }
                     }
                 }
@@ -95,9 +121,14 @@ public class ImporterJDBCExtension implements ImportSchemaExtension {
             throw new RuntimeException("Error retrieving JDBC metadata", e);
         }
 
+        validateUniqueTableNames(dataStoreApiSchemaResource);
+        logger.info("Import completed. Found {} tables.", dataStoreApiSchemaResource.getTables().size());
+
         PortDPDS portDPDS = new PortDPDS();
-        portDPDS.setRef(String.format("ports/%s.json", parameters.get(PARAM_PORT_NAME)));
-        portDPDS.setName(parameters.get(PARAM_PORT_NAME));
+        String target = importSchemaArguments.getParentCommandOptions().get("target");
+        String portName = parameters.get(PARAM_PORT_NAME);
+        portDPDS.setRef(String.format("ports/%s/%s.json", target, portName));
+        portDPDS.setName(portName);
         portDPDS.setVersion(parameters.get(PARAM_PORT_VERSION));
 
         PromisesDPDS promises = new PromisesDPDS();
@@ -107,7 +138,7 @@ public class ImporterJDBCExtension implements ImportSchemaExtension {
 
         StandardDefinitionDPDS api = new StandardDefinitionDPDS();
         promises.setApi(api);
-        api.setName(parameters.get(PARAM_PORT_NAME));
+        api.setName(portName);
         api.setVersion(parameters.get(PARAM_PORT_VERSION));
         api.setSpecification("datastoreapi");
         api.setSpecificationVersion("1.0.0");
@@ -134,16 +165,31 @@ public class ImporterJDBCExtension implements ImportSchemaExtension {
         }
     }
 
+    public void validateUniqueTableNames(DataStoreApiSchemaResource dataStoreApiSchemaResource) {
+        List<String> tableNames = dataStoreApiSchemaResource.getTables().stream()
+                .map(table -> table.getDefinition().getName())
+                .collect(Collectors.toList());
+
+        Set<String> uniqueNames = new HashSet<>();
+        for (String name : tableNames) {
+            if (!uniqueNames.add(name)) {
+               throw new RuntimeException("Duplicated table name found: please specify the correct catalog.");
+            }
+        }
+    }
+
     @Override
     public List<ExtensionOption> getExtensionOptions() {
         return List.of(
                 createOption(PARAM_CONNECTION_NAME, "The name of the connection", true),
                 createOption(PARAM_PORT_NAME, "The name of the port", true),
                 createOption(PARAM_PORT_VERSION, "The version of the port", true),
-                createOption(PARAM_PLATFORM, "The version of the port", true),
-                createOption(PARAM_CATALOG_NAME, "The catalog regex to fetch JDBC metadata", false),
-                createOption(PARAM_SCHEMA_NAME, "The schemas regex to fetch JDBC metadata", true),
-                createOption(PARAM_TABLES_REGEX, "The tables regex to fetch JDBC metadata", false)
+                createOption(PARAM_PLATFORM, "The name of the platform", true),
+                createOptionWithDefault(PARAM_CATALOG_NAME, "The catalog regex to fetch JDBC metadata", false, null),
+                createOption(PARAM_SCHEMA_NAME, "The schema name to fetch JDBC metadata", true),
+                createOptionWithDefault(PARAM_TABLES_REGEX, "The tables pattern to fetch JDBC metadata", false, "%"),
+                createOptionWithDefault(PARAM_TABLE_TYPES, "The table type list to fetch JDBC metadata", false, "TABLE,VIEW")
+
         );
     }
 
@@ -162,6 +208,18 @@ public class ImporterJDBCExtension implements ImportSchemaExtension {
                 .interactive(true)
                 .setter(value -> parameters.put(name, value))
                 .getter(() -> parameters.get(name))
+                .build();
+    }
+
+    private ExtensionOption createOptionWithDefault(String name, String description, boolean required, String defaultValue) {
+        return new ExtensionOption.Builder()
+                .names(name)
+                .description(description)
+                .required(required)
+                .interactive(true)
+                .setter(value -> parameters.put(name, value))
+                .getter(() -> parameters.get(name))
+                .defaultValue(defaultValue)
                 .build();
     }
 }

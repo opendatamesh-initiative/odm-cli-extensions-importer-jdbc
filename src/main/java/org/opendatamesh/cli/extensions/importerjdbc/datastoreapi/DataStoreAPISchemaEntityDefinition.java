@@ -8,6 +8,7 @@ import java.util.Map;
 
 public class DataStoreAPISchemaEntityDefinition {
 
+    private String title;
     private String name;
     private String kind;
     private String type;
@@ -170,5 +171,17 @@ public class DataStoreAPISchemaEntityDefinition {
 
     public void setsContext(Map<String, Object> sContext) {
         this.sContext = sContext;
+    }
+
+    public String get$schema() {
+        return "https://json-schema.org/draft/2020-12/schema";
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
     }
 }
