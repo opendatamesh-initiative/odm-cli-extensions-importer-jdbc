@@ -5,9 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.opendatamesh.cli.extensions.ExtensionInfo;
 import org.opendatamesh.cli.extensions.ExtensionOption;
 import org.opendatamesh.cli.extensions.OdmCliBaseConfiguration;
+import org.opendatamesh.cli.extensions.importer.ImporterArguments;
+import org.opendatamesh.cli.extensions.importer.ImporterExtension;
 import org.opendatamesh.cli.extensions.importerjdbc.datastoreapi.*;
-import org.opendatamesh.cli.extensions.importschema.ImportSchemaArguments;
-import org.opendatamesh.cli.extensions.importschema.ImportSchemaExtension;
 import org.opendatamesh.dpds.model.core.StandardDefinitionDPDS;
 import org.opendatamesh.dpds.model.interfaces.PortDPDS;
 import org.opendatamesh.dpds.model.interfaces.PromisesDPDS;
@@ -18,16 +18,15 @@ import java.sql.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
-public class ImporterJDBCExtension implements ImportSchemaExtension {
+public class ImporterJDBCExtension implements ImporterExtension<PortDPDS> {
 
     private static final String PARAM_TABLE_TYPES = "--tableTypes";
     private final Logger logger = LoggerFactory.getLogger(getClass());
 
     private static final String SUPPORTED_FROM = "jdbc";
-    private static final String SUPPORTED_TO = "port";
+    private static final String SUPPORTED_TO = "output-port";
 
     private static final String PARAM_CONNECTION_NAME = "--connectionName";
-    private static final String PARAM_PORT_NAME = "--portName";
     private static final String PARAM_PORT_VERSION = "--portVersion";
     private static final String PARAM_PLATFORM = "--platform";
     private static final String PARAM_CATALOG_NAME = "--catalogName";
@@ -42,15 +41,20 @@ public class ImporterJDBCExtension implements ImportSchemaExtension {
     }
 
     @Override
-    public PortDPDS importElement(ImportSchemaArguments importSchemaArguments) {
+    public Class<PortDPDS> getTargetClass() {
+        return PortDPDS.class;
+    }
+
+    @Override
+    public PortDPDS importElement(PortDPDS targetObject, ImporterArguments importerArguments) {
 
         validateRequiredParameters();
 
         // Retrieve connection configuration
-        OdmCliBaseConfiguration.System connection = importSchemaArguments.getOdmCliConfig()
-                .getRemoteSystemsConfigurations()
+        OdmCliBaseConfiguration.SystemConfig connection = importerArguments.getOdmCliConfig()
+                .getSystems()
                 .stream()
-                .filter(s -> parameters.get(PARAM_CONNECTION_NAME).equals(s.getName()))
+                .filter(s -> importerArguments.getParentCommandOptions().get("source").equals(s.getName()))
                 .findFirst()
                 .orElseThrow(() -> new RuntimeException(
                         String.format("Connection %s not found in ODM config", parameters.get(PARAM_CONNECTION_NAME))
@@ -125,9 +129,8 @@ public class ImporterJDBCExtension implements ImportSchemaExtension {
         logger.info("Import completed. Found {} tables.", dataStoreApiSchemaResource.getTables().size());
 
         PortDPDS portDPDS = new PortDPDS();
-        String target = importSchemaArguments.getParentCommandOptions().get("target");
-        String portName = parameters.get(PARAM_PORT_NAME);
-        portDPDS.setRef(String.format("ports/%s/%s.json", target, portName));
+        String portName = importerArguments.getParentCommandOptions().get("target");
+        portDPDS.setRef(String.format("ports/%s/%s.json", importerArguments.getParentCommandOptions().get("to"), portName));
         portDPDS.setName(portName);
         portDPDS.setVersion(parameters.get(PARAM_PORT_VERSION));
 
@@ -181,15 +184,12 @@ public class ImporterJDBCExtension implements ImportSchemaExtension {
     @Override
     public List<ExtensionOption> getExtensionOptions() {
         return List.of(
-                createOption(PARAM_CONNECTION_NAME, "The name of the connection", true),
-                createOption(PARAM_PORT_NAME, "The name of the port", true),
                 createOption(PARAM_PORT_VERSION, "The version of the port", true),
                 createOption(PARAM_PLATFORM, "The name of the platform", true),
                 createOptionWithDefault(PARAM_CATALOG_NAME, "The catalog regex to fetch JDBC metadata", false, null),
                 createOption(PARAM_SCHEMA_NAME, "The schema name to fetch JDBC metadata", true),
                 createOptionWithDefault(PARAM_TABLES_REGEX, "The tables pattern to fetch JDBC metadata", false, "%"),
                 createOptionWithDefault(PARAM_TABLE_TYPES, "The table type list to fetch JDBC metadata", false, "TABLE,VIEW")
-
         );
     }
 
