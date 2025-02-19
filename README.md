@@ -3,6 +3,49 @@
 ## Overview
 The **ImporterJDBCExtension** is a command-line extension for the Open Data Mesh CLI that allows importing database metadata using JDBC. It extracts schema, table, and column details and integrates them into a data product.
 
+## How to Use
+
+### Download ODM CLI
+To run the application properly, you must have a Java JDK installed.
+
+```sh
+sudo apt update && sudo apt install -y openjdk-17-jdk
+```
+
+Download the CLI:
+
+```bash
+wget -qO odm-cli $(wget -qO- https://api.github.com/repos/opendatamesh-initiative/odm-cli/releases/latest | grep -Eo '"browser_download_url": *"[^"]+"' | grep odm-cli | sed -E 's/.*"([^"]+)".*/\1/' | head -n1) && chmod +x odm-cli
+```
+
+Test the CLI:
+
+```bash
+./odmcli --version
+```
+
+## Configure Extensions
+By default, `odmcli` stores its configuration file in a directory named `.odmcli` within your `$HOME` directory. This directory contains extension and configuration property files.
+
+After running the command, the `.odmcli` folder should be created automatically. To customize the configuration, add or modify the `application.yml` file within this directory.
+
+### Example Configuration
+Below is an example `application.yml` file:
+
+```yaml
+cli:
+  systems:
+    - name: local-postgres
+      endpoint: "jdbc:postgresql://localhost:5432/postgres?useSSL=false"
+      user: "postgres"
+      password: "change-your-secret-password"
+extensions:
+  - name: odm-cli-extensions-importer-jdbc
+    url: https://github.com/opendatamesh-initiative/odm-cli-extensions-importer-jdbc/releases/download/v1.1.0/odm-cli-extensions-importer-jdbc-1.1.0.jar
+  - name: postgresql-42.7.5
+    url: https://jdbc.postgresql.org/download/postgresql-42.7.5.jar
+```
+
 ## Parent Command Parameters
 The extension utilizes parameters from its parent command, which provides essential configuration details. These parameters are passed as part of `ImporterArguments` and include:
 
@@ -34,11 +77,11 @@ In addition to the parent command parameters, the **ImporterJDBCExtension** supp
 Below is an example command using the extension with both parent command parameters and extension-specific arguments:
 
 ```sh
-odm-cli local import \
-  --from jdbc \
-  --to output-port \
+odm-cli import jdbc \
   --target test-port \
   --source testConnection \
+  --from jdbc \
+  --to output-port \
   --schemaName TEST_SCHEMA \
   --catalogName null \
   --tablesPattern % \
