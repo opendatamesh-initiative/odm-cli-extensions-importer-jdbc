@@ -1,0 +1,74 @@
+{
+  "externalReference": true,
+  "fullyQualifiedName": "urn:dpds:{namespace}:dataproducts:{product-name}:1:outputports:testApi:1",
+  "name": "testApi",
+  "version": "1.0.0",
+  "$ref": "ports/output-port/testApi.json",
+  "promises": {
+    "platform": "postgresql:importerjdbc",
+    "servicesType": "datastore-services",
+    "api": {
+      "externalReference": false,
+      "name": "testApi",
+      "version": "1.0.0",
+      "specification": "datastoreapi",
+      "specificationVersion": "1.0.0",
+      "x-custom": "preserved-api-property",
+      "definition": {
+        "datastoreapi": "1.0.0",
+        "schema": {
+          "databaseSchemaName": "TEST_SCHEMA",
+          "tables": [
+            {
+              "specification": "json-schema",
+              "specificationVersion": "1",
+              "definition": {
+                "title": "this should be removed",
+                "name": "table_to_be_removed",
+                "properties": {
+                  "column_to_be_removed": {
+                    "type": "string",
+                    "name": "column_to_be_removed",
+                    "physicalType": "varchar",
+                    "ordinalPosition": "1",
+                    "nullable": false
+                  }
+                },
+                "$schema": "https://json-schema.org/draft/2020-12/schema"
+              }
+            },
+            {
+              "specification": "json-schema",
+              "specificationVersion": "1",
+              "definition": {
+                "title": "should-be-updated",
+                "name": "TEST_TABLE",
+                "description": "preserved-table-description",
+                "x-custom": "preserved-table-property",
+                "properties": {
+                  "column_to_be_removed3": {
+                    "type": "string",
+                    "name": "column_to_be_removed3",
+                    "physicalType": "varchar",
+                    "ordinalPosition": "1",
+                    "nullable": false
+                  },
+                  "ID": {
+                    "type": "string",
+                    "name": "ID",
+                    "description": "preserved-column-description",
+                    "physicalType": "id-physicalType-should-be-updated",
+                    "ordinalPosition": "1",
+                    "nullable": false,
+                    "x-custom": "preserved-column-property"
+                  }
+                },
+                "$schema": "https://json-schema.org/draft/2020-12/schema"
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

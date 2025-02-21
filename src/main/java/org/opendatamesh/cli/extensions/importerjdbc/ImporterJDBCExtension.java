@@ -2,6 +2,7 @@ package org.opendatamesh.cli.extensions.importerjdbc;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.opendatamesh.cli.extensions.ExtensionInfo;
 import org.opendatamesh.cli.extensions.ExtensionOption;
 import org.opendatamesh.cli.extensions.OdmCliBaseConfiguration;
@@ -17,6 +18,8 @@ import org.slf4j.LoggerFactory;
 import java.sql.*;
 import java.util.*;
 import java.util.stream.Collectors;
+
+import static org.opendatamesh.cli.extensions.importerjdbc.DataStoreApiMerger.mergeDataStoreApi;
 
 public class ImporterJDBCExtension implements ImporterExtension<PortDPDS> {
 
@@ -66,6 +69,7 @@ public class ImporterJDBCExtension implements ImporterExtension<PortDPDS> {
 
         // Data structure to hold schema metadata
         DataStoreApiDefinition dataStoreApiDefinition = new DataStoreApiDefinition();
+        dataStoreApiDefinition.setDatastoreapi("1.0.0");
         DataStoreApiSchemaResource dataStoreApiSchemaResource = new DataStoreApiSchemaResource();
         dataStoreApiSchemaResource.setTables(new ArrayList<>());
         dataStoreApiSchemaResource.setDatabaseSchemaName(parameters.get(PARAM_SCHEMA_NAME));
@@ -128,38 +132,36 @@ public class ImporterJDBCExtension implements ImporterExtension<PortDPDS> {
         validateUniqueTableNames(dataStoreApiSchemaResource);
         logger.info("Import completed. Found {} tables.", dataStoreApiSchemaResource.getTables().size());
 
-        PortDPDS portDPDS = new PortDPDS();
+        PortDPDS portDPDS = targetObject != null ? targetObject : new PortDPDS();
         String portName = importerArguments.getParentCommandOptions().get("target");
         portDPDS.setRef(String.format("ports/%s/%s.json", importerArguments.getParentCommandOptions().get("to"), portName));
         portDPDS.setName(portName);
         portDPDS.setVersion(parameters.get(PARAM_PORT_VERSION));
 
-        PromisesDPDS promises = new PromisesDPDS();
+        PromisesDPDS promises = portDPDS.getPromises() != null ? portDPDS.getPromises() : new PromisesDPDS();
         portDPDS.setPromises(promises);
         promises.setPlatform(parameters.get(PARAM_PLATFORM));
         promises.setServicesType("datastore-services");
 
-        StandardDefinitionDPDS api = new StandardDefinitionDPDS();
+        StandardDefinitionDPDS api = promises.getApi() != null ? promises.getApi() : new StandardDefinitionDPDS();
         promises.setApi(api);
         api.setName(portName);
         api.setVersion(parameters.get(PARAM_PORT_VERSION));
         api.setSpecification("datastoreapi");
         api.setSpecificationVersion("1.0.0");
 
-        dataStoreApiDefinition.setDatastoreapi("1.0.0");
         ObjectMapper objectMapper = new ObjectMapper();
         objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
-        api.setDefinition(objectMapper.valueToTree(dataStoreApiDefinition));
+        ObjectNode newDataStoreApiDefinitionJsonNode = objectMapper.valueToTree(dataStoreApiDefinition);
+
+        api.setDefinition(api.getDefinitionJson() != null ? mergeDataStoreApi(api.getDefinitionJson(), newDataStoreApiDefinitionJsonNode) : newDataStoreApiDefinitionJsonNode);
 
         return portDPDS;
     }
 
+
     private void validateRequiredParameters() {
-        List<String> requiredParams = getExtensionOptions().stream()
-                .filter(ExtensionOption::isRequired)
-                .map(ExtensionOption::getNames)
-                .flatMap(Collection::stream)
-                .collect(Collectors.toList());
+        List<String> requiredParams = getExtensionOptions().stream().filter(ExtensionOption::isRequired).map(ExtensionOption::getNames).flatMap(Collection::stream).collect(Collectors.toList());
 
         for (String param : requiredParams) {
             if (parameters.get(param) == null) {
@@ -169,14 +171,12 @@ public class ImporterJDBCExtension implements ImporterExtension<PortDPDS> {
     }
 
     public void validateUniqueTableNames(DataStoreApiSchemaResource dataStoreApiSchemaResource) {
-        List<String> tableNames = dataStoreApiSchemaResource.getTables().stream()
-                .map(table -> table.getDefinition().getName())
-                .collect(Collectors.toList());
+        List<String> tableNames = dataStoreApiSchemaResource.getTables().stream().map(table -> table.getDefinition().getName()).collect(Collectors.toList());
 
         Set<String> uniqueNames = new HashSet<>();
         for (String name : tableNames) {
             if (!uniqueNames.add(name)) {
-               throw new RuntimeException("Duplicated table name found: please specify the correct catalog.");
+                throw new RuntimeException("Duplicated table name found: please specify the correct catalog.");
             }
         }
     }
@@ -184,12 +184,12 @@ public class ImporterJDBCExtension implements ImporterExtension<PortDPDS> {
     @Override
     public List<ExtensionOption> getExtensionOptions() {
         return List.of(
-                createOption(PARAM_PORT_VERSION, "The version of the port", true),
-                createOption(PARAM_PLATFORM, "The name of the platform", true),
-                createOptionWithDefault(PARAM_CATALOG_NAME, "The catalog regex to fetch JDBC metadata", false, null),
-                createOption(PARAM_SCHEMA_NAME, "The schema name to fetch JDBC metadata", true),
-                createOptionWithDefault(PARAM_TABLES_REGEX, "The tables pattern to fetch JDBC metadata", false, "%"),
-                createOptionWithDefault(PARAM_TABLE_TYPES, "The table type list to fetch JDBC metadata", false, "TABLE,VIEW")
+                createRequiredOption(PARAM_PORT_VERSION, "The version of the port"),
+                createRequiredOption(PARAM_PLATFORM, "The name of the platform"),
+                createOptionWithDefault(PARAM_CATALOG_NAME, "The catalog regex to fetch JDBC metadata", null),
+                createRequiredOption(PARAM_SCHEMA_NAME, "The schema name to fetch JDBC metadata"),
+                createOptionWithDefault(PARAM_TABLES_REGEX, "The tables pattern to fetch JDBC metadata", "%"),
+                createOptionWithDefault(PARAM_TABLE_TYPES, "The table type list to fetch JDBC metadata", "TABLE,VIEW")
         );
     }
 
@@ -200,26 +200,27 @@ public class ImporterJDBCExtension implements ImporterExtension<PortDPDS> {
                 .build();
     }
 
-    private ExtensionOption createOption(String name, String description, boolean required) {
+    private ExtensionOption createRequiredOption(String name, String description) {
         return new ExtensionOption.Builder()
                 .names(name)
                 .description(description)
-                .required(required)
+                .required(true)
                 .interactive(true)
                 .setter(value -> parameters.put(name, value))
                 .getter(() -> parameters.get(name))
                 .build();
     }
 
-    private ExtensionOption createOptionWithDefault(String name, String description, boolean required, String defaultValue) {
+    private ExtensionOption createOptionWithDefault(String name, String description, String defaultValue) {
         return new ExtensionOption.Builder()
                 .names(name)
                 .description(description)
-                .required(required)
+                .required(false)
                 .interactive(true)
                 .setter(value -> parameters.put(name, value))
                 .getter(() -> parameters.get(name))
                 .defaultValue(defaultValue)
                 .build();
     }
+
 }
