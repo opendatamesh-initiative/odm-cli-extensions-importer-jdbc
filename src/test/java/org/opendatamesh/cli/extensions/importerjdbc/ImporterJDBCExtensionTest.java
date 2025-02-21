@@ -1,5 +1,9 @@
 package org.opendatamesh.cli.extensions.importerjdbc;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.h2.tools.RunScript;
 import org.junit.jupiter.api.*;
 import org.opendatamesh.cli.extensions.importer.ImporterArguments;
@@ -7,11 +11,10 @@ import org.opendatamesh.cli.extensions.OdmCliBaseConfiguration;
 import org.opendatamesh.dpds.model.interfaces.PortDPDS;
 
 import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -73,7 +76,7 @@ class ImporterJDBCExtensionTest {
 
     @Test
     void testImportElement() {
-        PortDPDS port = importerJDBC.importElement(new PortDPDS(), importerArguments);
+        PortDPDS port = importerJDBC.importElement(null, importerArguments);
 
         assertNotNull(port);
         assertNotNull(port.getPromises());
@@ -87,4 +90,47 @@ class ImporterJDBCExtensionTest {
         assertTrue(jsonDefinition.contains("name".toUpperCase()), "Extracted metadata should contain column 'name'");
         assertTrue(jsonDefinition.contains("created_at".toUpperCase()), "Extracted metadata should contain column 'created_at'");
     }
+
+    @Test
+    void testImportElementWithPatch() {
+        PortDPDS existing = loadPortFromTestResources();
+        PortDPDS port = importerJDBC.importElement(existing, importerArguments);
+
+        assertNotNull(port);
+        assertNotNull(port.getPromises());
+        assertNotNull(port.getPromises().getApi());
+        assertNotNull(port.getPromises().getApi().getDefinitionJson());
+        assertEquals("ports/output-port/test-port.json", port.getRef());
+
+        String jsonDefinition = port.getPromises().getApi().getDefinitionJson().toString();
+        assertTrue(jsonDefinition.contains("TEST_TABLE"), "Extracted metadata should contain 'TEST_TABLE'");
+        assertTrue(jsonDefinition.contains("ID"), "Extracted metadata should contain column 'ID'");
+        assertTrue(jsonDefinition.contains("NAME"), "Extracted metadata should contain column 'NAME'");
+        assertTrue(jsonDefinition.contains("CREATED_AT"), "Extracted metadata should contain column 'CREATED_AT'");
+        assertFalse(jsonDefinition.contains("to_be_removed"), "Extracted metadata should not contain text 'to_be_removed'");
+        assertFalse(jsonDefinition.contains("should-be-updated"), "Extracted metadata should not contain text 'should-be-updated'");
+
+        assertTrue(jsonDefinition.contains("preserved-table-property"), "Extracted metadata should contain text 'preserved-table-property'");
+        assertTrue(jsonDefinition.contains("preserved-column-property"), "Extracted metadata should contain text 'preserved-column-property'");
+        assertTrue(jsonDefinition.contains("preserved-table-description"), "Extracted metadata should contain text 'preserved-table-description'");
+        assertTrue(jsonDefinition.contains("preserved-column-description"), "Extracted metadata should contain text 'preserved-column-description'");
+
+
+    }
+
+    private PortDPDS loadPortFromTestResources() {
+        try {
+            String text = new Scanner(Objects.requireNonNull(ImporterJDBCExtensionTest.class.getResourceAsStream("ImporterJDBCExtensionTest.testPatch.json")), StandardCharsets.UTF_8).useDelimiter("\\A").next();
+            ObjectMapper objectMapper = new ObjectMapper();
+            ObjectNode jsonNode = objectMapper.readValue(text, ObjectNode.class);
+            JsonNode datastoreSchema = jsonNode.path("promises").path("api").path("definition");
+
+            PortDPDS portDPDS = objectMapper.readValue(text, PortDPDS.class);
+            portDPDS.getPromises().getApi().setDefinition(datastoreSchema);
+            return portDPDS;
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
 }
