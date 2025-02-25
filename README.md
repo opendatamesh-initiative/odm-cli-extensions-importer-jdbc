@@ -77,7 +77,7 @@ In addition to the parent command parameters, the **ImporterJDBCExtension** supp
 Below is an example command using the extension with both parent command parameters and extension-specific arguments:
 
 ```sh
-odm-cli import jdbc \
+odm-cli import \
   --target test-port \
   --source testConnection \
   --from jdbc \
