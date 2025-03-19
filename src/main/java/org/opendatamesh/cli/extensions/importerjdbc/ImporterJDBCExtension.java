@@ -1,6 +1,8 @@
 package org.opendatamesh.cli.extensions.importerjdbc;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.opendatamesh.cli.extensions.ExtensionInfo;
@@ -9,9 +11,10 @@ import org.opendatamesh.cli.extensions.OdmCliBaseConfiguration;
 import org.opendatamesh.cli.extensions.importer.ImporterArguments;
 import org.opendatamesh.cli.extensions.importer.ImporterExtension;
 import org.opendatamesh.cli.extensions.importerjdbc.datastoreapi.*;
-import org.opendatamesh.dpds.model.core.StandardDefinitionDPDS;
-import org.opendatamesh.dpds.model.interfaces.PortDPDS;
-import org.opendatamesh.dpds.model.interfaces.PromisesDPDS;
+import org.opendatamesh.dpds.model.core.ComponentBase;
+import org.opendatamesh.dpds.model.core.StandardDefinition;
+import org.opendatamesh.dpds.model.interfaces.Port;
+import org.opendatamesh.dpds.model.interfaces.Promises;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,7 +24,7 @@ import java.util.stream.Collectors;
 
 import static org.opendatamesh.cli.extensions.importerjdbc.DataStoreApiMerger.mergeDataStoreApi;
 
-public class ImporterJDBCExtension implements ImporterExtension<PortDPDS> {
+public class ImporterJDBCExtension implements ImporterExtension<Port> {
 
     private static final String PARAM_TABLE_TYPES = "--tableTypes";
     private final Logger logger = LoggerFactory.getLogger(getClass());
@@ -44,12 +47,12 @@ public class ImporterJDBCExtension implements ImporterExtension<PortDPDS> {
     }
 
     @Override
-    public Class<PortDPDS> getTargetClass() {
-        return PortDPDS.class;
+    public Class<Port> getTargetClass() {
+        return Port.class;
     }
 
     @Override
-    public PortDPDS importElement(PortDPDS targetObject, ImporterArguments importerArguments) {
+    public Port importElement(Port targetObject, ImporterArguments importerArguments) {
 
         validateRequiredParameters();
 
@@ -132,18 +135,18 @@ public class ImporterJDBCExtension implements ImporterExtension<PortDPDS> {
         validateUniqueTableNames(dataStoreApiSchemaResource);
         logger.info("Import completed. Found {} tables.", dataStoreApiSchemaResource.getTables().size());
 
-        PortDPDS portDPDS = targetObject != null ? targetObject : new PortDPDS();
+        Port port = targetObject != null ? targetObject : new Port();
         String portName = importerArguments.getParentCommandOptions().get("target");
-        portDPDS.setRef(String.format("ports/%s/%s.json", importerArguments.getParentCommandOptions().get("to"), portName));
-        portDPDS.setName(portName);
-        portDPDS.setVersion(parameters.get(PARAM_PORT_VERSION));
+        port.setRef(String.format("ports/%s/%s.json", importerArguments.getParentCommandOptions().get("to"), portName));
+        port.setName(portName);
+        port.setVersion(parameters.get(PARAM_PORT_VERSION));
 
-        PromisesDPDS promises = portDPDS.getPromises() != null ? portDPDS.getPromises() : new PromisesDPDS();
-        portDPDS.setPromises(promises);
+        Promises promises = port.getPromises() != null ? port.getPromises() : new Promises();
+        port.setPromises(promises);
         promises.setPlatform(parameters.get(PARAM_PLATFORM));
         promises.setServicesType("datastore-services");
 
-        StandardDefinitionDPDS api = promises.getApi() != null ? promises.getApi() : new StandardDefinitionDPDS();
+        StandardDefinition api = promises.getApi() != null ? promises.getApi() : new StandardDefinition();
         promises.setApi(api);
         api.setName(portName);
         api.setVersion(parameters.get(PARAM_PORT_VERSION));
@@ -154,9 +157,15 @@ public class ImporterJDBCExtension implements ImporterExtension<PortDPDS> {
         objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
         ObjectNode newDataStoreApiDefinitionJsonNode = objectMapper.valueToTree(dataStoreApiDefinition);
 
-        api.setDefinition(api.getDefinitionJson() != null ? mergeDataStoreApi(api.getDefinitionJson(), newDataStoreApiDefinitionJsonNode) : newDataStoreApiDefinitionJsonNode);
-
-        return portDPDS;
+        JsonNode mergedApiDefinition = api.getDefinition() != null && !api.getDefinition().getAdditionalProperties().isEmpty() ?
+                mergeDataStoreApi(objectMapper.valueToTree(api.getDefinition()), newDataStoreApiDefinitionJsonNode) :
+                newDataStoreApiDefinitionJsonNode;
+        try {
+            api.setDefinition(objectMapper.treeToValue(mergedApiDefinition, ComponentBase.class));
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+        return port;
     }
 
 

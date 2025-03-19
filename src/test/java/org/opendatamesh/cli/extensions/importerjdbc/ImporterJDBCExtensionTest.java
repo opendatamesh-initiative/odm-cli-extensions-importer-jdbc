@@ -5,10 +5,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.h2.tools.RunScript;
-import org.junit.jupiter.api.*;
-import org.opendatamesh.cli.extensions.importer.ImporterArguments;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.opendatamesh.cli.extensions.OdmCliBaseConfiguration;
-import org.opendatamesh.dpds.model.interfaces.PortDPDS;
+import org.opendatamesh.cli.extensions.importer.ImporterArguments;
+import org.opendatamesh.dpds.model.core.ComponentBase;
+import org.opendatamesh.dpds.model.interfaces.Port;
 
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
@@ -75,16 +78,16 @@ class ImporterJDBCExtensionTest {
     }
 
     @Test
-    void testImportElement() {
-        PortDPDS port = importerJDBC.importElement(null, importerArguments);
+    void testImportElement() throws JsonProcessingException {
+        Port port = importerJDBC.importElement(null, importerArguments);
 
         assertNotNull(port);
         assertNotNull(port.getPromises());
         assertNotNull(port.getPromises().getApi());
-        assertNotNull(port.getPromises().getApi().getDefinitionJson());
+        assertNotNull(port.getPromises().getApi().getDefinition());
         assertEquals("ports/output-port/test-port.json", port.getRef());
 
-        String jsonDefinition = port.getPromises().getApi().getDefinitionJson().toString();
+        String jsonDefinition = new ObjectMapper().writeValueAsString(port.getPromises().getApi().getDefinition());
         assertTrue(jsonDefinition.contains("test_table".toUpperCase()), "Extracted metadata should contain 'test_table'");
         assertTrue(jsonDefinition.contains("id".toUpperCase()), "Extracted metadata should contain column 'id'");
         assertTrue(jsonDefinition.contains("name".toUpperCase()), "Extracted metadata should contain column 'name'");
@@ -92,17 +95,17 @@ class ImporterJDBCExtensionTest {
     }
 
     @Test
-    void testImportElementWithPatch() {
-        PortDPDS existing = loadPortFromTestResources();
-        PortDPDS port = importerJDBC.importElement(existing, importerArguments);
+    void testImportElementWithPatch() throws JsonProcessingException {
+        Port existing = loadPortFromTestResources();
+        Port port = importerJDBC.importElement(existing, importerArguments);
 
         assertNotNull(port);
         assertNotNull(port.getPromises());
         assertNotNull(port.getPromises().getApi());
-        assertNotNull(port.getPromises().getApi().getDefinitionJson());
+        assertNotNull(port.getPromises().getApi().getDefinition());
         assertEquals("ports/output-port/test-port.json", port.getRef());
 
-        String jsonDefinition = port.getPromises().getApi().getDefinitionJson().toString();
+        String jsonDefinition = new ObjectMapper().writeValueAsString(port.getPromises().getApi().getDefinition());
         assertTrue(jsonDefinition.contains("TEST_TABLE"), "Extracted metadata should contain 'TEST_TABLE'");
         assertTrue(jsonDefinition.contains("ID"), "Extracted metadata should contain column 'ID'");
         assertTrue(jsonDefinition.contains("NAME"), "Extracted metadata should contain column 'NAME'");
@@ -118,16 +121,16 @@ class ImporterJDBCExtensionTest {
 
     }
 
-    private PortDPDS loadPortFromTestResources() {
+    private Port loadPortFromTestResources() {
         try {
             String text = new Scanner(Objects.requireNonNull(ImporterJDBCExtensionTest.class.getResourceAsStream("ImporterJDBCExtensionTest.testPatch.json")), StandardCharsets.UTF_8).useDelimiter("\\A").next();
             ObjectMapper objectMapper = new ObjectMapper();
             ObjectNode jsonNode = objectMapper.readValue(text, ObjectNode.class);
             JsonNode datastoreSchema = jsonNode.path("promises").path("api").path("definition");
 
-            PortDPDS portDPDS = objectMapper.readValue(text, PortDPDS.class);
-            portDPDS.getPromises().getApi().setDefinition(datastoreSchema);
-            return portDPDS;
+            Port port = objectMapper.readValue(text, Port.class);
+            port.getPromises().getApi().setDefinition(new ObjectMapper().treeToValue(datastoreSchema, ComponentBase.class));
+            return port;
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
         }

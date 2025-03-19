@@ -41,7 +41,7 @@ cli:
       password: "change-your-secret-password"
 extensions:
   - name: odm-cli-extensions-importer-jdbc
-    url: https://github.com/opendatamesh-initiative/odm-cli-extensions-importer-jdbc/releases/download/v1.1.0/odm-cli-extensions-importer-jdbc-1.1.0.jar
+    url: https://github.com/opendatamesh-initiative/odm-cli-extensions-importer-jdbc/releases/download/v1.1.0/odm-cli-extensions-importer-jdbc-1.2.0.jar
   - name: postgresql-42.7.5
     url: https://jdbc.postgresql.org/download/postgresql-42.7.5.jar
 ```
@@ -92,7 +92,7 @@ odm-cli import \
 ## Expected Behavior
 1. The extension connects to the database using JDBC details from `source`.
 2. It retrieves metadata from the specified schema and tables.
-3. It constructs a `PortDPDS` object containing extracted metadata.
+3. It constructs a `Port` object containing extracted metadata.
 4. The metadata is stored in the specified `target` port, ensuring compatibility with Open Data Mesh standards.
 
 ## Testing
