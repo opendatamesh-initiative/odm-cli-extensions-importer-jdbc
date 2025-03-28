@@ -21,7 +21,7 @@ wget -qO odm-cli $(wget -qO- https://api.github.com/repos/opendatamesh-initiativ
 Test the CLI:
 
 ```bash
-./odmcli --version
+./odm-cli --version
 ```
 
 ## Configure Extensions
@@ -41,7 +41,7 @@ cli:
       password: "change-your-secret-password"
 extensions:
   - name: odm-cli-extensions-importer-jdbc
-    url: https://github.com/opendatamesh-initiative/odm-cli-extensions-importer-jdbc/releases/download/v1.1.0/odm-cli-extensions-importer-jdbc-1.2.0.jar
+    url: https://github.com/opendatamesh-initiative/odm-cli-extensions-importer-jdbc/releases/download/v1.2.0/odm-cli-extensions-importer-jdbc-1.2.0.jar
   - name: postgresql-42.7.5
     url: https://jdbc.postgresql.org/download/postgresql-42.7.5.jar
 ```
@@ -77,7 +77,7 @@ In addition to the parent command parameters, the **ImporterJDBCExtension** supp
 Below is an example command using the extension with both parent command parameters and extension-specific arguments:
 
 ```sh
-odm-cli import \
+./odm-cli local import \
   --target test-port \
   --source testConnection \
   --from jdbc \
